@@ -1,0 +1,451 @@
+
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >
+  Financial Literacy and Personal Finance Management Platform
+  for UK Citizens - Secure AWS Networking Infrastructure.
+
+# ==================================================
+# 1. PARAMETERS
+# ==================================================
+
+Parameters:
+
+  EnvironmentName:
+    Type: String
+    Default: development
+    AllowedValues:
+      - development
+      - production
+    Description: Deployment environment
+
+  NatGatewayMode:
+    Type: String
+    Default: Single
+    AllowedValues:
+      - None
+      - Single
+      - PerAZ
+    Description: >
+      None disables NAT, Single creates one NAT Gateway,
+      PerAZ creates one NAT Gateway per Availability Zone.
+
+# ==================================================
+# 2. CONDITIONS
+# ==================================================
+
+Conditions:
+
+  CreateNatGateway:
+    !Not
+      - !Equals
+        - !Ref NatGatewayMode
+        - None
+
+  CreateNatGatewayB:
+    !Equals
+      - !Ref NatGatewayMode
+      - PerAZ
+
+# ==================================================
+# 3. RESOURCES
+# ==================================================
+
+Resources:
+
+  # --------------------------------------------------
+  # 3.1 VPC
+  # --------------------------------------------------
+
+  PlatformVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-financial-literacy-vpc'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: Financial-Literacy-Platform
+
+  # --------------------------------------------------
+  # 3.2 INTERNET GATEWAY
+  # --------------------------------------------------
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-financial-literacy-igw'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref PlatformVPC
+      InternetGatewayId: !Ref InternetGateway
+
+  # --------------------------------------------------
+  # 3.3 PUBLIC SUBNETS
+  # --------------------------------------------------
+
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref PlatformVPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone:
+        Fn::Select:
+          - 0
+          - Fn::GetAZs: ''
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-public-subnet-a'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Tier
+          Value: Public
+
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref PlatformVPC
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone:
+        Fn::Select:
+          - 1
+          - Fn::GetAZs: ''
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-public-subnet-b'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Tier
+          Value: Public
+
+  # --------------------------------------------------
+  # 3.4 PRIVATE SUBNETS
+  # --------------------------------------------------
+
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref PlatformVPC
+      CidrBlock: 10.0.11.0/24
+      AvailabilityZone:
+        Fn::Select:
+          - 0
+          - Fn::GetAZs: ''
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-private-subnet-a'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Tier
+          Value: Private
+
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref PlatformVPC
+      CidrBlock: 10.0.12.0/24
+      AvailabilityZone:
+        Fn::Select:
+          - 1
+          - Fn::GetAZs: ''
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-private-subnet-b'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Tier
+          Value: Private
+
+  # --------------------------------------------------
+  # 3.5 PUBLIC ROUTE TABLE
+  # --------------------------------------------------
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref PlatformVPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-public-route-table'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  PublicInternetRoute:
+    Type: AWS::EC2::Route
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetAssociationA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetA
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnetAssociationB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetB
+      RouteTableId: !Ref PublicRouteTable
+
+  # --------------------------------------------------
+  # 3.6 PRIVATE ROUTE TABLES
+  # --------------------------------------------------
+
+  PrivateRouteTableA:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref PlatformVPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-private-route-table-a'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  PrivateRouteTableB:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref PlatformVPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-private-route-table-b'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  PrivateSubnetAssociationA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetA
+      RouteTableId: !Ref PrivateRouteTableA
+
+  PrivateSubnetAssociationB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetB
+      RouteTableId: !Ref PrivateRouteTableB
+
+  # --------------------------------------------------
+  # 3.7 NAT GATEWAY A
+  # --------------------------------------------------
+
+  NATGatewayEIPA:
+    Type: AWS::EC2::EIP
+    Condition: CreateNatGateway
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-nat-eip-a'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  NATGatewayA:
+    Type: AWS::EC2::NatGateway
+    Condition: CreateNatGateway
+    DependsOn:
+      - PublicInternetRoute
+      - PublicSubnetAssociationA
+    Properties:
+      AllocationId: !GetAtt NATGatewayEIPA.AllocationId
+      SubnetId: !Ref PublicSubnetA
+      ConnectivityType: public
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-nat-gateway-a'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  # --------------------------------------------------
+  # 3.8 NAT GATEWAY B (PRODUCTION OPTION)
+  # --------------------------------------------------
+
+  NATGatewayEIPB:
+    Type: AWS::EC2::EIP
+    Condition: CreateNatGatewayB
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-nat-eip-b'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  NATGatewayB:
+    Type: AWS::EC2::NatGateway
+    Condition: CreateNatGatewayB
+    DependsOn:
+      - PublicInternetRoute
+      - PublicSubnetAssociationB
+    Properties:
+      AllocationId: !GetAtt NATGatewayEIPB.AllocationId
+      SubnetId: !Ref PublicSubnetB
+      ConnectivityType: public
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-nat-gateway-b'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  # --------------------------------------------------
+  # 3.9 PRIVATE INTERNET ROUTES
+  # --------------------------------------------------
+
+  PrivateInternetRouteA:
+    Type: AWS::EC2::Route
+    Condition: CreateNatGateway
+    Properties:
+      RouteTableId: !Ref PrivateRouteTableA
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NATGatewayA
+
+  PrivateInternetRouteB:
+    Type: AWS::EC2::Route
+    Condition: CreateNatGateway
+    Properties:
+      RouteTableId: !Ref PrivateRouteTableB
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !If
+        - CreateNatGatewayB
+        - !Ref NATGatewayB
+        - !Ref NATGatewayA
+
+  # --------------------------------------------------
+  # 3.10 LAMBDA SECURITY GROUP
+  # --------------------------------------------------
+
+  LambdaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Node.js Lambda functions
+      VpcId: !Ref PlatformVPC
+      SecurityGroupEgress:
+        - IpProtocol: '-1'
+          CidrIp: 0.0.0.0/0
+          Description: Allow outbound connections
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-lambda-security-group'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  # --------------------------------------------------
+  # 3.11 DATABASE SECURITY GROUP
+  # --------------------------------------------------
+
+  DatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow MySQL access only from Lambda
+      VpcId: !Ref PlatformVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          SourceSecurityGroupId: !Ref LambdaSecurityGroup
+          Description: MySQL access from Lambda only
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-database-security-group'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  # --------------------------------------------------
+  # 3.12 RDS DATABASE SUBNET GROUP
+  # --------------------------------------------------
+
+  DatabaseSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Private subnets for MySQL RDS
+      SubnetIds:
+        - !Ref PrivateSubnetA
+        - !Ref PrivateSubnetB
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-database-subnet-group'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+# ==================================================
+# 4. OUTPUTS
+# ==================================================
+
+Outputs:
+
+  VPCId:
+    Description: Financial Literacy VPC ID
+    Value: !Ref PlatformVPC
+    Export:
+      Name: !Sub '${EnvironmentName}-FinancialLiteracy-VPCId'
+
+  PublicSubnetAId:
+    Description: Public subnet A ID
+    Value: !Ref PublicSubnetA
+
+  PublicSubnetBId:
+    Description: Public subnet B ID
+    Value: !Ref PublicSubnetB
+
+  PrivateSubnetAId:
+    Description: Private subnet A ID
+    Value: !Ref PrivateSubnetA
+
+  PrivateSubnetBId:
+    Description: Private subnet B ID
+    Value: !Ref PrivateSubnetB
+
+  LambdaSecurityGroupId:
+    Description: Lambda security group ID
+    Value: !Ref LambdaSecurityGroup
+
+  DatabaseSecurityGroupId:
+    Description: Database security group ID
+    Value: !Ref DatabaseSecurityGroup
+
+  DatabaseSubnetGroupName:
+    Description: RDS DB subnet group name
+    Value: !Ref DatabaseSubnetGroup
+
+  PublicRouteTableId:
+    Description: Public route table ID
+    Value: !Ref PublicRouteTable
+
+  PrivateRouteTableAId:
+    Description: Private route table A ID
+    Value: !Ref PrivateRouteTableA
+
+  PrivateRouteTableBId:
+    Description: Private route table B ID
+    Value: !Ref PrivateRouteTableB
+
+  NATGatewayAId:
+    Condition: CreateNatGateway
+    Description: NAT Gateway A ID
+    Value: !Ref NATGatewayA
+
+  NATGatewayBId:
+    Condition: CreateNatGatewayB
+    Description: NAT Gateway B ID
+    Value: !Ref NATGatewayB
+
+  Environment:
+    Description: Deployment environment
+    Value: !Ref EnvironmentName
